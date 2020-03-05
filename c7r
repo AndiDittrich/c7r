@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+
+#________________________________________________________________________
+#                  _____     
+#               __|___  | __ 
+#              / __| / / '__|
+#             | (__ / /| |   
+#              \___/_/ |_|   
+#                            
+# c7r » c[ontaine]r » stupid simple docker container build/push
+#________________________________________________________________________
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+# --
+# Copyright 2019-2020 Andi Dittrich <https://andidittrich.com>
+#________________________________________________________________________
+
+_VERSION="1.0.0"
+_LICENSE="MPL-2.0"
+_REPOSITORY="https://github.com/AndiDittrich/c7r"
+
+show_usage(){
+    cat << EOF
+Usage: c7r <command> [args...]
+  Commands:
+    build <target> [tag]        Build a docker image within the given directory (cached)
+    rebuild <target> [tag]      Build a docker image within the given directory (uncached)
+    push <target>               Push an existing image to the registry defined by target
+    update <target> [tag]       Rebuild the image and push to registry (uncached)
+
+    --help                      Displays this help
+    --version                   Displays version
+EOF
+    exit 0
+}
+
+show_version(){
+    cat << EOF
+c7r » c[ontaine]r » stupid simple docker container build/push » v${_VERSION}
+License: Mozilla Public License, v. 2.0 (MPL-2.0) https://opensource.org/licenses/MPL-2.0
+Repository: ${_REPOSITORY}
+EOF
+    exit 0
+}
+
+# simple processing
+[ "$1" = "--help" ] && show_usage
+[ "$1" = "--version" ] && show_version
+
+# paths
+BASEDIR="$( cd "$( dirname "$(realpath ${BASH_SOURCE[0]})" )" && pwd )"
+WORKING_DIR="$(pwd)"
+
+# load functions
+source $BASEDIR/lib/functions
+
+# intro
+# ---------------------------------------
+function c7r_intro(){
+    print_heading " >> c7r"
+    _print_colorized '\x1B[1m' "c7r » c[ontaine]r » stupid simple docker container build/push\n"
+}
+
+# validate paths
+c7r_precheck(){
+    
+    # image name provided ?
+    if [ -z "$1" ]; then
+        panic "image path not provided"
+    fi
+
+    # extract path
+    IMAGE_PATH="$(realpath $1)"
+
+    # path exists ?
+    if [ ! -d "$IMAGE_PATH" ]; then
+        panic "image path not provided"
+    fi
+
+    # extract image name (strip trailing slash)
+    IMAGE_NAME="$(basename $IMAGE_PATH)"
+
+    # optional tag provided ?
+    if [ -z "$2" ]; then
+        IMAGE_TAG="latest"
+    else
+        IMAGE_TAG="$2"
+    fi
+
+    # dockerfile available ?
+    if [ ! -f "$IMAGE_PATH/Dockerfile" ]; then
+        panic "Dockerfile not found in $IMAGE_PATH"
+    fi
+
+    # repository config file exists ?
+    if [ -f "$IMAGE_PATH/.repository" ]; then
+        # load repository config
+        IMGAE_REPOSITORY=$(head -n 1 $IMAGE_PATH/.repository)
+    else
+        log_info "repository config not provided for image [$IMAGE_NAME]"
+    fi
+
+    # show info
+    log_info "image-name: ${IMAGE_NAME}:${IMAGE_TAG}"
+    log_info "image-path: $IMAGE_PATH"
+}
+
+# trigger cached build
+c7r_build(){
+    log_info "bulding image ${IMAGE_NAME}"
+    docker build \
+        -t "$IMAGE_NAME:$IMAGE_TAG" \
+        $IMAGE_PATH
+}
+
+# trigger uncached build
+c7r_rebuild(){
+    log_info "rebulding image ${IMAGE_NAME}"
+    docker build \
+        -t "$IMAGE_NAME:$IMAGE_TAG" \
+        --no-cache \
+        $IMAGE_PATH
+}
+
+c7r_push(){
+
+    # image tag set ?
+    if [ -z $IMAGE_TAG ]; then
+        log_info "image tag not provided..fetching latest"
+        # get latest tag
+        IMAGE_TAG=$(docker image ls $IMAGE_NAME --format "{{.Repository}}:{{.Tag}}" | head -n 1)
+
+        # tag not available ?
+        if [ -z $IMAGE_TAG ]; then
+            panic "cannot find image tag"
+        else
+            log_info " - $IMAGE_TAG"
+        fi
+    fi
+    
+    # re-tag image
+    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMGAE_REPOSITORY}:${IMAGE_TAG} && {
+        log_success "image retagged to ${IMGAE_REPOSITORY}:${IMAGE_TAG}"
+    } || {
+        panic "cannot retag image to ${IMGAE_REPOSITORY}:${IMAGE_TAG}"
+    }
+
+    # push image
+    docker push ${IMGAE_REPOSITORY}:${IMAGE_TAG} && {
+        log_success "image pushed to registry"
+    } || {
+        panic "cannot push image to registry"
+    }
+}
+
+# Command Dispatching
+# ---------------------------------------
+case "$1" in
+    check)
+        c7r_intro
+        c7r_precheck $2 $3
+        exit 0
+    ;;
+
+    build)
+        c7r_intro
+        c7r_precheck $2 $3
+        c7r_build
+        exit 0
+    ;;
+
+    rebuild)
+        c7r_intro
+        c7r_precheck $2 $3
+        c7r_rebuild
+        exit 0
+    ;;
+
+    push)
+        c7r_intro
+        c7r_precheck $2 $3
+        c7r_push
+        exit 0
+    ;;
+
+    update)
+        c7r_intro
+        c7r_precheck $2 $3
+        c7r_rebuild
+        c7r_push
+        exit 0
+    ;;
+
+    *)
+        show_usage
+        exit 1
+    ;;
+esac
