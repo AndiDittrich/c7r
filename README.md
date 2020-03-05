@@ -29,7 +29,7 @@ https://myregistry.example.org/core/busybox
 File: `.c7r`
 
 ```raw
-
+BUILD_OPT="--target stage1 --quiet --build-arg X=hello"
 ```
 
 **Image directory**
@@ -37,6 +37,7 @@ File: `.c7r`
 A simple image directory used to build the image
 
 ```raw
+busybox
 ├── Dockerfile
 ├── .repository
 ├── .c7r

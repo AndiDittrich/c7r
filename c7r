@@ -102,6 +102,12 @@ c7r_precheck(){
         log_info "repository config not provided for image [$IMAGE_NAME]"
     fi
 
+    # options file exists ?
+    if [ -f "$IMAGE_PATH/.c7r" ]; then
+        log_info "loading options file"
+        source $IMAGE_PATH/.c7r
+    fi
+
     # show info
     log_info "image-name: ${IMAGE_NAME}:${IMAGE_TAG}"
     log_info "image-path: $IMAGE_PATH"
@@ -111,7 +117,8 @@ c7r_precheck(){
 c7r_build(){
     log_info "bulding image ${IMAGE_NAME}"
     docker build \
-        -t "$IMAGE_NAME:$IMAGE_TAG" \
+        --tag "$IMAGE_NAME:$IMAGE_TAG" \
+        $BUILD_OPT \
         $IMAGE_PATH
 }
 
@@ -121,6 +128,7 @@ c7r_rebuild(){
     docker build \
         -t "$IMAGE_NAME:$IMAGE_TAG" \
         --no-cache \
+        $BUILD_OPT \
         $IMAGE_PATH
 }
 
